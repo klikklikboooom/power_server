@@ -3,7 +3,7 @@ import { ObjectType, Field, Int } from "type-graphql";
 
 @ObjectType()
 @Entity()
-export class Room {
+export class Cards {
   @Field(() => Int)
   @PrimaryKey()
   id!: number;
@@ -18,16 +18,13 @@ export class Room {
 
   @Field(() => String)
   @Property({ type: "text" })
-  name!: string;
+  value!: string;
 
   @Field(() => String)
   @Property({ type: "text" })
-  code!: string;
+  suit!: string;
 
   @Field(() => String)
-  @Property({ type: "text" })
-  status!: string;
-
-  @Field(() => Int)
-  turn!: number;
+  @Property({ type: "int" })
+  rank!: number;
 }

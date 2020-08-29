@@ -3,7 +3,7 @@ import { ObjectType, Field, Int } from "type-graphql";
 
 @ObjectType()
 @Entity()
-export class Room {
+export class User {
   @Field(() => Int)
   @PrimaryKey()
   id!: number;
@@ -22,12 +22,5 @@ export class Room {
 
   @Field(() => String)
   @Property({ type: "text" })
-  code!: string;
-
-  @Field(() => String)
-  @Property({ type: "text" })
-  status!: string;
-
-  @Field(() => Int)
-  turn!: number;
+  password_hash!: string;
 }
