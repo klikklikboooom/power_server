@@ -7,24 +7,53 @@ import { ApolloServer } from "apollo-server-express";
 import { buildSchema } from "type-graphql";
 import { HelloResolver } from "./resolvers/hello";
 import { RoomResolver } from "./resolvers/room";
+import { UserResolver } from "./resolvers/user";
+import { MyContext } from "./types";
+
+import redis from "redis";
+import session from "express-session";
+import connectRedis from "connect-redis";
 
 const main = async () => {
   const orm = await MikroORM.init(microConfig);
   await orm.getMigrator().up();
   const app = express();
-  app.listen(4000, () => {
-    console.log("Server running on port 4000");
-  });
+
+  const RedisStore = connectRedis(session);
+  const redisClient = redis.createClient();
+
+  app.use(
+    session({
+      name: "qid",
+      store: new RedisStore({
+        client: redisClient,
+        disableTouch: true,
+      }),
+      cookie: {
+        maxAge: 1000 * 60 * 60 * 24 * 5, //5 years
+        httpOnly: true,
+        sameSite: "lax",
+        secure: __prod__, //cookie only works in https
+      },
+      saveUninitialized: false,
+      secret: "sdsfasdkgfljsgjfslgf",
+      resave: false,
+    })
+  );
 
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
-      resolvers: [HelloResolver, RoomResolver],
+      resolvers: [HelloResolver, RoomResolver, UserResolver],
       validate: false,
     }),
-    context: () => ({ em: orm.em }),
+    context: ({ req, res }): MyContext => ({ em: orm.em, req, res }),
   });
 
   apolloServer.applyMiddleware({ app });
+
+  app.listen(4000, () => {
+    console.log("Server running on port 4000");
+  });
 };
 
 main().catch((err) => {

@@ -8,12 +8,12 @@ export class Cards {
   @PrimaryKey()
   id!: number;
 
-  @Field(() => String)
-  @Property({ type: "date" })
+  @Field(() => Date)
+  @Property({ type: "date", default: "now" })
   createdAt = new Date();
 
   @Field(() => Date)
-  @Property({ type: "date", onUpdate: () => new Date() })
+  @Property({ type: "date", default: "now", onUpdate: () => new Date() })
   updatedAt = new Date();
 
   @Field(() => String)
@@ -24,7 +24,7 @@ export class Cards {
   @Property({ type: "text" })
   suit!: string;
 
-  @Field(() => String)
-  @Property({ type: "int" })
+  @Field(() => Int)
+  @Property()
   rank!: number;
 }

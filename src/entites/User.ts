@@ -8,8 +8,8 @@ export class User {
   @PrimaryKey()
   id!: number;
 
-  @Field(() => String)
-  @Property({ type: "date" })
+  @Field(() => Date)
+  @Property({ type: "date", default: "now" })
   createdAt = new Date();
 
   @Field(() => Date)
@@ -17,10 +17,9 @@ export class User {
   updatedAt = new Date();
 
   @Field(() => String)
-  @Property({ type: "text" })
+  @Property({ type: "text", unique: true })
   name!: string;
 
-  @Field(() => String)
   @Property({ type: "text" })
   password_hash!: string;
 }

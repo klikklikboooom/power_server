@@ -8,8 +8,8 @@ export class Room {
   @PrimaryKey()
   id!: number;
 
-  @Field(() => String)
-  @Property({ type: "date" })
+  @Field(() => Date)
+  @Property({ type: "date", default: "now" })
   createdAt = new Date();
 
   @Field(() => Date)
