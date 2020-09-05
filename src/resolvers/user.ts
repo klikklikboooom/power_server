@@ -11,6 +11,7 @@ import {
 import { MyContext } from "src/types";
 import { User } from "../entites/User";
 import argon2 from "argon2";
+import { EntityManager } from "@mikro-orm/postgresql";
 
 @ObjectType()
 class FieldError {
@@ -43,8 +44,9 @@ class UserResponse {
 export class UserResolver {
   @Query(() => User, { nullable: true })
   async me(@Ctx() { req, em }: MyContext) {
+    console.log(req.session);
     //no one is logged in
-    if (req.session!.userId) {
+    if (!req.session!.userId) {
       return null;
     }
     const user = await em.findOne(User, { id: req.session!.userId });
@@ -78,9 +80,19 @@ export class UserResolver {
       };
     }
     const password_hash = await argon2.hash(options.password);
-    const user = em.create(User, { name: options.username, password_hash });
+    let user;
     try {
-      await em.persistAndFlush(user);
+      const result = await (em as EntityManager)
+        .createQueryBuilder(User)
+        .getKnexQuery()
+        .insert({
+          name: options.username,
+          password_hash,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .returning("*");
+      user = result[0];
     } catch (err) {
       console.log(err.message);
       if (err.code === "23505" || err.detail.includes("already exists")) {

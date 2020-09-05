@@ -8,7 +8,7 @@ import { buildSchema } from "type-graphql";
 import { HelloResolver } from "./resolvers/hello";
 import { RoomResolver } from "./resolvers/room";
 import { UserResolver } from "./resolvers/user";
-import { MyContext } from "./types";
+import cors from "cors";
 
 import redis from "redis";
 import session from "express-session";
@@ -23,6 +23,13 @@ const main = async () => {
   const redisClient = redis.createClient();
 
   app.use(
+    cors({
+      origin: "http://localhost:3000",
+      credentials: true,
+    })
+  );
+
+  app.use(
     session({
       name: "qid",
       store: new RedisStore({
@@ -33,7 +40,7 @@ const main = async () => {
         maxAge: 1000 * 60 * 60 * 24 * 5, //5 years
         httpOnly: true,
         sameSite: "lax",
-        secure: __prod__, //cookie only works in https
+        secure: !__prod__, //cookie only works in http
       },
       saveUninitialized: false,
       secret: "sdsfasdkgfljsgjfslgf",
@@ -42,14 +49,22 @@ const main = async () => {
   );
 
   const apolloServer = new ApolloServer({
+    playground: {
+      settings: {
+        "request.credentials": "include",
+      },
+    },
     schema: await buildSchema({
       resolvers: [HelloResolver, RoomResolver, UserResolver],
       validate: false,
     }),
-    context: ({ req, res }): MyContext => ({ em: orm.em, req, res }),
+    context: ({ req, res }) => ({ em: orm.em, req, res }),
   });
 
-  apolloServer.applyMiddleware({ app });
+  apolloServer.applyMiddleware({
+    app,
+    cors: false,
+  });
 
   app.listen(4000, () => {
     console.log("Server running on port 4000");

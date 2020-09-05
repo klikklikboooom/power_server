@@ -9,12 +9,14 @@
     "dev2": "nodemon --exec ts-node src/index.ts",
     "start2": "ts-node src/index.ts",
     "start": "node dist/index.js",
-    "migration:create": "npx mikro-orm migration:create"
+    "migration:create": "npx mikro-orm migration:create",
+    "seed": "mikro-orm database:import seeds.sql"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/cors": "^2.8.7",
     "@types/express": "^4.17.7",
     "@types/node": "^14.6.0",
     "nodemon": "^2.0.4",
@@ -32,6 +34,7 @@
     "argon2": "^0.27.0",
     "class-validator": "^0.12.2",
     "connect-redis": "^5.0.0",
+    "cors": "^2.8.5",
     "express": "^4.17.1",
     "express-session": "^1.17.1",
     "graphql": "^15.3.0",
