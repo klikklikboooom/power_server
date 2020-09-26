@@ -1,29 +1,63 @@
-import { Entity, PrimaryKey, Property } from "@mikro-orm/core";
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  BaseEntity,
+  ManyToOne,
+  OneToMany,
+} from "typeorm";
 import { ObjectType, Field, Int } from "type-graphql";
+import { Room } from "./Room";
+import { UserCards } from "./UserCards";
+import { Pool } from "./Pool";
 
 @ObjectType()
 @Entity()
-export class User {
+export class User extends BaseEntity {
   @Field(() => Int)
-  @PrimaryKey()
+  @PrimaryGeneratedColumn()
   id!: number;
 
-  @Field(() => Date)
-  @Property({ type: "date", default: "now" })
-  createdAt = new Date();
-
-  @Field(() => Date)
-  @Property({ type: "date", onUpdate: () => new Date() })
-  updatedAt = new Date();
-
   @Field(() => String)
-  @Property({ type: "text", unique: true })
+  @Column({ unique: true })
   name!: string;
 
   @Field(() => String)
-  @Property({ type: "text", unique: true })
+  @Column({ unique: true })
   email!: string;
 
-  @Property({ type: "text" })
+  @Column()
   password_hash!: string;
+
+  @Field()
+  @Column({ nullable: true })
+  roomId: number;
+
+  @Field(() => Room)
+  @ManyToOne(() => Room, (room) => room.users)
+  room: Room;
+
+  @Field()
+  @Column({ nullable: true })
+  turn: number;
+
+  @Field()
+  @Column({ nullable: true })
+  playerStatus: string;
+
+  @OneToMany(() => UserCards, (userCards) => userCards.user)
+  userCards: UserCards[];
+
+  @OneToMany(() => Pool, (pool) => pool.user)
+  pool: Pool[];
+
+  @Field(() => Date)
+  @CreateDateColumn()
+  createdAt = new Date();
+
+  @Field(() => Date)
+  @UpdateDateColumn()
+  updatedAt = new Date();
 }

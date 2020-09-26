@@ -2,7 +2,6 @@ import { __prod__ } from "./constants";
 import { Room } from "./entites/Room";
 import { Cards } from "./entites/Cards";
 import { User } from "./entites/User";
-import { MikroORM } from "@mikro-orm/core";
 import path from "path";
 
 export default {
@@ -18,4 +17,4 @@ export default {
   password: "password",
   type: "postgresql",
   debug: !__prod__,
-} as Parameters<typeof MikroORM.init>[0];
+};

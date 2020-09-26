@@ -1,30 +1,46 @@
-import { Entity, PrimaryKey, Property } from "@mikro-orm/core";
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Column,
+  BaseEntity,
+  OneToMany,
+} from "typeorm";
 import { ObjectType, Field, Int } from "type-graphql";
+import { UserCards } from "./UserCards";
+import { Pool } from "./Pool";
 
 @ObjectType()
 @Entity()
-export class Cards {
+export class Cards extends BaseEntity {
   @Field(() => Int)
-  @PrimaryKey()
+  @PrimaryGeneratedColumn()
   id!: number;
 
-  @Field(() => Date)
-  @Property({ type: "date", default: "now" })
-  createdAt = new Date();
-
-  @Field(() => Date)
-  @Property({ type: "date", default: "now", onUpdate: () => new Date() })
-  updatedAt = new Date();
-
   @Field(() => String)
-  @Property({ type: "text" })
+  @Column({ type: "text" })
   value!: string;
 
   @Field(() => String)
-  @Property({ type: "text" })
+  @Column({ type: "text" })
   suit!: string;
 
   @Field(() => Int)
-  @Property()
+  @Column({ type: "int" })
   rank!: number;
+
+  @OneToMany(() => UserCards, (userCards) => userCards.cards)
+  userCards!: UserCards[];
+
+  @OneToMany(() => Pool, (pool) => pool.user)
+  pool: Pool[];
+
+  @Field(() => Date)
+  @CreateDateColumn()
+  createdAt = new Date();
+
+  @Field(() => Date)
+  @UpdateDateColumn()
+  updatedAt = new Date();
 }

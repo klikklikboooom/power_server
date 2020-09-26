@@ -1,7 +1,6 @@
-import { MikroORM } from "@mikro-orm/core";
+import "reflect-metadata";
 import { __prod__, COOKIE_NAME } from "./constants";
 // import { Room } from "./entites/Room";
-import microConfig from "./mikro-orm.config";
 import express from "express";
 import { ApolloServer } from "apollo-server-express";
 import { buildSchema } from "type-graphql";
@@ -9,16 +8,35 @@ import { HelloResolver } from "./resolvers/hello";
 import { RoomResolver } from "./resolvers/room";
 import { UserResolver } from "./resolvers/user";
 import cors from "cors";
+import { createConnection } from "typeorm";
 
 import Redis from "ioredis";
 import session from "express-session";
 import connectRedis from "connect-redis";
+import { Cards } from "./entites/Cards";
+import { Room } from "./entites/Room";
+import { User } from "./entites/User";
+import path from "path";
+import { UserCards } from "./entites/UserCards";
+import { Pool } from "./entites/Pool";
 
 const main = async () => {
-  const orm = await MikroORM.init(microConfig);
-  await orm.getMigrator().up();
-  const app = express();
+  const connection = await createConnection({
+    type: "postgres",
+    database: "power",
+    username: "nikhil",
+    password: "password",
+    logging: true,
+    synchronize: true,
+    entities: [Cards, Room, User, UserCards, Pool],
+    migrations: [path.join(__dirname, "./migrations/*")],
+    cli: {
+      migrationsDir: path.join(__dirname, "./migrations"),
+    },
+  });
 
+  await connection.runMigrations();
+  const app = express();
   const RedisStore = connectRedis(session);
   const redis = new Redis();
 
@@ -58,7 +76,7 @@ const main = async () => {
       resolvers: [HelloResolver, RoomResolver, UserResolver],
       validate: false,
     }),
-    context: ({ req, res }) => ({ em: orm.em, req, res, redis }),
+    context: ({ req, res }) => ({ req, res, redis }),
   });
 
   apolloServer.applyMiddleware({
