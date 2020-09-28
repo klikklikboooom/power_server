@@ -17,7 +17,6 @@ import { getConnection } from "typeorm";
 import { FieldError } from "../types";
 
 @ObjectType()
-@ObjectType()
 class RoomResponse {
   @Field(() => [FieldError], { nullable: true })
   errors?: FieldError[];
@@ -71,7 +70,10 @@ export class RoomResolver {
     const room = Room.create({ name, code }).save();
     (await room).name = name;
     console.log(await room);
-    User.update({ id: req.session.userId }, { roomId: (await room).id });
+    User.update(
+      { id: req.session.userId },
+      { roomId: (await room).id, turn: 1, playerStatus: "waiting" }
+    );
     return room;
   }
 
@@ -107,7 +109,14 @@ export class RoomResolver {
     } else if (newJoinee) {
       console.log("Maybe");
       if (room.users.length < 4) {
-        await User.update({ id: req.session.userId }, { roomId: room.id });
+        await User.update(
+          { id: req.session.userId },
+          {
+            roomId: room.id,
+            turn: room.users.length + 1,
+            playerStatus: "waiting",
+          }
+        );
       } else {
         return {
           errors: [
