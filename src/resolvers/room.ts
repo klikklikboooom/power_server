@@ -93,9 +93,7 @@ export class RoomResolver {
       await Room.update({ id }, { name });
     }
 
-    const room = await getConnection()
-      .getRepository(Room)
-      .findOne({ relations: ["users"], where: { code } });
+    const room = await Room.findOne({ relations: ["users"], where: { code } });
     console.log(code);
     if (!room) {
       return {
@@ -128,7 +126,6 @@ export class RoomResolver {
         };
       }
     }
-    console.log("meh");
     return { room };
   }
 
@@ -143,9 +140,20 @@ export class RoomResolver {
   }
 
   @Mutation(() => Boolean)
-  async leaveRoom(@Ctx() { req }: MyContext): Promise<boolean> {
+  async leaveRoom(
+    @Arg("roomId") roomId: number,
+    @Ctx() { req }: MyContext
+  ): Promise<boolean> {
     try {
-      await User.update({ id: req.session.userId }, { roomId: undefined });
+      const room = await Room.findOne({
+        relations: ["users"],
+        where: { id: roomId },
+      });
+      const userId = req.session.userId;
+      const userIndex = room!.users.findIndex((user) => user.id === userId);
+      room?.users.splice(userIndex, 1);
+      await User.update({ id: userId }, { roomId: undefined });
+
       return true;
     } catch {
       return false;

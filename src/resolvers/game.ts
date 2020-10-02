@@ -8,10 +8,10 @@ import {
   ObjectType,
   Subscription,
   Root,
-  PubSub,
-  PubSubEngine,
   Publisher,
+  PubSub,
 } from "type-graphql";
+
 import { UserCards } from "../entites/UserCards";
 import { Cards } from "../entites/Cards";
 import { Room } from "../entites/Room";
@@ -19,6 +19,9 @@ import { getConnection } from "typeorm";
 import { MyContext } from "../types";
 import { User } from "../entites/User";
 import { Pool } from "../entites/Pool";
+import { fetchPlayableRank } from "../utils/fetchPlayableRank";
+import { pushCardsIntoPool } from "../utils/pushCardsIntoPool";
+import { moveCardsFromPoolToUser } from "../utils/moveCardsFromPoolToUser";
 
 @ObjectType()
 class PutCardsDownResponse {
@@ -38,6 +41,18 @@ class TurnSubscriptionPayload {
   roomId?: number;
 }
 
+@ObjectType()
+class UserCardsPoolResponse {
+  @Field(() => [UserCards])
+  userCards?: UserCards[];
+
+  @Field(() => [Pool])
+  pool?: Pool[];
+
+  @Field(() => [Cards])
+  roomCards: Cards[];
+}
+
 @Resolver()
 export class GameResolver {
   @Mutation(() => [UserCards])
@@ -53,9 +68,11 @@ export class GameResolver {
     const room = await getConnection()
       .getRepository(Room)
       .findOne({ relations: ["users", "cards"], where: { id } });
+
     if (!room) {
       return "No room found";
     }
+
     room.cards = cards;
     Room.save(room);
 
@@ -101,6 +118,7 @@ export class GameResolver {
 
     //Update user's cards
     const savedUserCards = await UserCards.save(userCards);
+
     return savedUserCards;
   }
 
@@ -108,7 +126,9 @@ export class GameResolver {
   async putCardsDown(
     @Arg("roomId", () => Int) roomId: number,
     @Arg("cardIds", () => [Int]) cardIds: [number],
-    @Ctx() { req }: MyContext
+    @Ctx() { req }: MyContext,
+    @PubSub("CARDS PUT DOWN") cardsPutDown: Publisher<TurnSubscriptionPayload>,
+    @PubSub("FACE UP CARDS PUT DOWN") faceUpCardsPutDown: Publisher<UserCards[]>
   ): Promise<PutCardsDownResponse | string> {
     // await getConnection().createQueryBuilder().update(UserCards).set{}
     if (cardIds.length < 3) {
@@ -139,10 +159,19 @@ export class GameResolver {
       (user) => user.playerStatus === "ready"
     );
 
+    let faceUpUserCards = [];
+    for (let k = 0; k < userCards.length; k++) {
+      if (userCards[k].type === "face up") {
+        faceUpUserCards.push(userCards[k]);
+      }
+    }
+
+    await faceUpCardsPutDown(faceUpUserCards);
     if (allPlayersReady) {
       room!.turn = 1;
       room!.status = "ready";
       Room.save(room);
+      cardsPutDown({ poolCards: [], roomId });
       return { userCards, status: "ready" };
     }
 
@@ -154,11 +183,14 @@ export class GameResolver {
     @Arg("roomId") roomId: number,
     @Arg("cardIds", () => [Int]) cardIds: [number],
     @Ctx() { req }: MyContext,
-    @PubSub("NEW CARDS PLAYED") publish: Publisher<TurnSubscriptionPayload>
+    @PubSub("NEW CARDS PLAYED")
+    newCardsPlayed: Publisher<TurnSubscriptionPayload>,
+    @PubSub("FACE UP CARD PLAYED") faceUpCardPlayed: Publisher<UserCards[]>
   ): Promise<UserCards[] | string> {
     const userId = req.session.userId;
 
     console.log("ci", cardIds);
+
     const poolCards = await pushCardsIntoPool(cardIds, roomId, userId);
 
     await Pool.save(poolCards);
@@ -168,19 +200,18 @@ export class GameResolver {
     });
 
     const numOfUserCards = userCardsInHand.length;
+    const room = await Room.findOne({
+      where: { id: roomId },
+      relations: ["cards", "users"],
+    });
 
     if (numOfUserCards < 3) {
       const numOfCardsToPickUp = 3 - numOfUserCards;
-      const room = await Room.findOne({
-        where: { id: roomId },
-        relations: ["cards"],
-      });
 
       const cardsToPickUp = room?.cards.splice(0, numOfCardsToPickUp);
       await Room.save(room!);
 
       const newUserCards: UserCards[] = [];
-      await publish({ poolCards, roomId });
 
       cardsToPickUp?.forEach((card) => {
         const userCard = new UserCards();
@@ -199,25 +230,51 @@ export class GameResolver {
       .where('"userId" = :userId ', { userId })
       .getMany();
 
+    if (!userCards.length) {
+      const currUser = await User.findOne(userId);
+      currUser!.turn = 0;
+      await User.save(currUser!);
+      return "You're done.";
+    }
+
+    await newCardsPlayed({ poolCards, roomId });
+    const cards = await UserCards.find({ where: { cardId: cardIds } });
+    let faceUpCards = [];
+    for (let j = 0; j < cards.length; j++) {
+      if (cards[j].type === "face up") {
+        faceUpCards.push(cards[j]);
+      }
+    }
+
+    if (faceUpCards.length) {
+      faceUpCardPlayed(faceUpCards);
+    }
+
     return userCards;
   }
 
-  @Subscription(() => [UserCards], {
-    topics: ["NEW CARDS PLAYED", "GAME STARTED", "CARDS PICKED UP"],
+  @Subscription(() => UserCardsPoolResponse, {
+    topics: ["NEW CARDS PLAYED", "GAME STARTED", "CARDS PUT DOWN"],
   })
   async newCardsPlayed(
     @Root() turnSubscriptionPayload: TurnSubscriptionPayload
-  ): Promise<UserCards[] | string> {
-    console.log("here");
+  ): Promise<UserCardsPoolResponse | string> {
+    let playableRank;
     const { poolCards, roomId } = turnSubscriptionPayload;
     let userCards: UserCards[] = [];
 
     const room = await Room.findOne({
       where: { id: roomId },
-      relations: ["users"],
+      relations: ["users", "cards"],
     });
 
-    const turn = room?.turn;
+    if (room!.users.length === 1) {
+      return "Game Over";
+    }
+
+    let turn = room!.turn;
+
+    if (turn === null || !turn) turn = 0;
 
     const currUser = await User.findOne({
       where: { turn, roomId },
@@ -232,10 +289,6 @@ export class GameResolver {
       User.save(currUser!);
     }
 
-    if (room!.users.length === 1) {
-      return "Game Over";
-    }
-
     room!.turn = (turn! + 1) % room!.users.length;
     const nextUser = await User.findOne({
       where: { turn: (turn! + 1) % room!.users.length, roomId },
@@ -245,45 +298,109 @@ export class GameResolver {
       where: { userId: nextUser?.id, type: "hand" },
     });
 
-    if (poolCards) {
+    if (poolCards && userCards.length) {
       userCards.filter(async (userCard) => {
-        const poolCardId = poolCards[0].cardId;
-        const poolCard = await Cards.findOne(poolCardId);
-        const poolCardRank = poolCard?.rank;
+        playableRank = fetchPlayableRank(roomId!);
+
         const cardID = userCard.cardId;
         const card = await Cards.findOne(cardID);
-        if (card!.rank >= poolCardRank!) {
+        if (card!.rank in playableRank) {
           return true;
         }
         return false;
       });
+    } else if (userCards.length === 0 && poolCards) {
+      userCards = await UserCards.find({
+        where: { userId: nextUser?.id, type: "face up" },
+      });
+      if (!userCards.length) {
+        return "Pick up a face down card";
+      }
+
+      userCards.filter(async (userCard) => {
+        const cardID = userCard.cardId;
+        const card = await Cards.findOne(cardID);
+        playableRank = fetchPlayableRank(roomId!);
+        if (card!.rank in playableRank) {
+          return true;
+        }
+        return false;
+      });
+    } else if (userCards.length === 0 && !poolCards) {
+      userCards = await UserCards.find({
+        where: { userId: nextUser?.id, type: "face up" },
+      });
+      if (!userCards.length) {
+        return "Pick up a face down card";
+      }
     }
 
+    const pileOfCards = await Pool.find({ where: { roomId } });
+
+    console.log({ userCards, pool: pileOfCards });
+    return { userCards, pool: pileOfCards, roomCards: room!.cards };
+  }
+
+  @Mutation(() => [UserCards])
+  async playFaceDownCards(
+    @Arg("roomId") roomId: number,
+    @Arg("cardId", () => Int) cardId: number,
+    @Ctx() { req }: MyContext,
+    @PubSub("NEW CARDS PLAYED")
+    newCardsPlayed: Publisher<TurnSubscriptionPayload>,
+    @PubSub("FACE DOWN CARD PLAYED") faceDownCardPlayed: Publisher<UserCards[]>
+  ): Promise<UserCards[] | string> {
+    const playableRank = await fetchPlayableRank(roomId);
+    const card = await Cards.findOne(cardId);
+    const userId = req.session.userId;
+    const faceDownCards = [];
+    if (playableRank.indexOf(card!.rank) > -1) {
+      const poolCards = await pushCardsIntoPool([cardId], roomId, userId);
+      Pool.save(poolCards);
+      const userCards = await UserCards.find({ where: { userId } });
+
+      for (let l = 0; l < userCards.length; l++) {
+        if (userCards[l].type === "face down") {
+          faceDownCards.push(userCards[l]);
+        }
+      }
+      faceDownCardPlayed(faceDownCards);
+      newCardsPlayed({ poolCards, roomId });
+      return userCards;
+    }
+
+    const userCards = await moveCardsFromPoolToUser(roomId, userId);
+    for (let l = 0; l < userCards.length; l++) {
+      if (userCards[l].type === "face down") {
+        faceDownCards.push(userCards[l]);
+      }
+    }
+    faceDownCardPlayed(faceDownCards);
+    newCardsPlayed({ poolCards: [], roomId });
     return userCards;
   }
-}
 
-async function pushCardsIntoPool(
-  cardIds: [number],
-  roomId: number,
-  userId: number
-): Promise<Pool[]> {
-  const poolCards: Pool[] = [];
-  console.log("ci", cardIds);
-
-  for (let i = 0; i < cardIds.length; i++) {
-    const cardId = cardIds[i];
-    const userCard = await UserCards.findOne({
-      where: { cardId: cardId, userId },
-    });
-
-    UserCards.remove(userCard!);
-    const poolCard = new Pool();
-    poolCard.userId = userId;
-    poolCard.roomId = roomId;
-    poolCard.cardId = cardId;
-    poolCards.push(poolCard);
+  @Mutation(() => [UserCards])
+  async pickUpFromPile(
+    @Arg("roomId", () => Int) roomId: number,
+    @Ctx() { req }: MyContext,
+    @PubSub("CARDS PICKED UP")
+    cardsPickedUp: Publisher<TurnSubscriptionPayload>
+  ): Promise<UserCards[] | string> {
+    const userId = req.session.userId;
+    const userCards = await moveCardsFromPoolToUser(roomId, userId);
+    await cardsPickedUp({ poolCards: [], roomId });
+    return userCards;
   }
 
-  return poolCards;
+  @Subscription(() => [UserCards], {
+    topics: [
+      "FACE DOWN CARD PLAYED",
+      "FACE UP CARD PLAYED",
+      "FACE UP CARDS PUT DOWN",
+    ],
+  })
+  async updateUserCardsDown(@Root() DownUserUserCards: [UserCards]) {
+    return DownUserUserCards;
+  }
 }

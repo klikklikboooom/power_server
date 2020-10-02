@@ -2,7 +2,7 @@ import "reflect-metadata";
 import { __prod__, COOKIE_NAME } from "./constants";
 // import { Room } from "./entites/Room";
 import express from "express";
-import { ApolloServer, PubSub } from "apollo-server-express";
+import { ApolloServer } from "apollo-server-express";
 import { buildSchema } from "type-graphql";
 import { HelloResolver } from "./resolvers/hello";
 import { RoomResolver } from "./resolvers/room";
@@ -20,8 +20,6 @@ import path from "path";
 import { UserCards } from "./entites/UserCards";
 import { Pool } from "./entites/Pool";
 import { GameResolver } from "./resolvers/game";
-import { SubscriptionServer } from "subscriptions-transport-ws";
-import { execute, subscribe } from "graphql";
 import { createServer } from "http";
 const main = async () => {
   const connection = await createConnection({
@@ -80,7 +78,7 @@ const main = async () => {
       validate: false,
     }),
     context: ({ req, res }) => ({ req, res, redis }),
-    subscriptions: { keepAlive: 100000000000000 },
+    // subscriptions: { path: "/" },
   });
 
   apolloServer.applyMiddleware({
@@ -90,22 +88,10 @@ const main = async () => {
 
   const server = createServer(app);
 
+  apolloServer.installSubscriptionHandlers(server);
+
   server.listen(4000, async () => {
     console.log("Server running on port 4000");
-    new SubscriptionServer(
-      {
-        execute,
-        subscribe,
-        schema: await buildSchema({
-          resolvers: [HelloResolver, RoomResolver, UserResolver, GameResolver],
-          validate: false,
-        }),
-      },
-      {
-        server,
-        path: "/graphql",
-      }
-    );
   });
 };
 
