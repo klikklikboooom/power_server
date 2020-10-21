@@ -8,10 +8,12 @@ import {
   UseMiddleware,
   ObjectType,
   Field,
+  Subscription,
+  Root,
 } from "type-graphql";
 import { Room } from "../entites/Room";
 import { User } from "../entites/User";
-import { MyContext } from "src/types";
+import { MyContext } from "../types";
 import { isAuth } from "../middleware/isAuth";
 import { getConnection } from "typeorm";
 import { FieldError } from "../types";
@@ -67,12 +69,12 @@ export class RoomResolver {
       const user = await User.findOne(req.session.userId);
       name = user?.name + "'s game";
     }
-    const room = Room.create({ name, code }).save();
-    (await room).name = name;
-    console.log(await room);
+    const room = await Room.create({ name, code }).save();
+    room.name = name;
+    console.log(room);
     User.update(
       { id: req.session.userId },
-      { roomId: (await room).id, turn: 1, playerStatus: "waiting" }
+      { roomId: room.id, turn: 1, playerStatus: "waiting" }
     );
     return room;
   }
@@ -158,5 +160,10 @@ export class RoomResolver {
     } catch {
       return false;
     }
+  }
+
+  @Subscription(() => Room, { topics: ["NEW PLAYER JOINED"] })
+  async updatedRoom(@Root() room: Room) {
+    return room;
   }
 }
